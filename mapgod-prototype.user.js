@@ -416,11 +416,31 @@ This script intentionally does NOT auto-spam sends. Test one target manually fir
     const btn = document.createElement('button');
     btn.id = `${APP_ID}-launcher`;
     btn.textContent = 'MapGod';
-    btn.style.cssText = 'position:fixed;z-index:99998;right:24px;bottom:24px;padding:6px 10px;background:#7d510f;color:white;border:1px solid #fff;box-shadow:0 3px 12px rgba(0,0,0,.35);cursor:pointer;';
+    btn.style.cssText = 'position:fixed!important;z-index:2147483647!important;right:24px!important;bottom:24px!important;padding:8px 12px!important;background:#7d510f!important;color:white!important;border:2px solid #fff!important;border-radius:4px!important;box-shadow:0 3px 12px rgba(0,0,0,.45)!important;cursor:pointer!important;font:bold 12px Verdana,Arial,sans-serif!important;';
     btn.onclick = renderPanel;
-    document.body.appendChild(btn);
+    (document.body || document.documentElement).appendChild(btn);
   }
 
-  addLauncher();
-  renderPanel();
+  function boot() {
+    console.log('[MapGod] booting on', location.href);
+    window.MapGodPrototype = {
+      open: renderPanel,
+      scan: scanAndRender,
+      version: '0.1.1-debug',
+    };
+    addLauncher();
+    renderPanel();
+    console.log('[MapGod] ready. If panel is hidden, run MapGodPrototype.open() in console.');
+  }
+
+  try {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', boot, { once: true });
+    } else {
+      boot();
+    }
+  } catch (err) {
+    console.error('[MapGod] failed to boot:', err);
+    alert('MapGod failed to boot: ' + (err && err.message ? err.message : err));
+  }
 })();
