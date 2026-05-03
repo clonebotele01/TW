@@ -1,4 +1,14 @@
-(async () => {
+try {
+  if (window.ScriptAPI && typeof ScriptAPI.register === 'function') {
+    ScriptAPI.register('MapGodQuickbar', true, 'clonebotele01', 'World 155 utility');
+  }
+} catch (e) {
+  console.warn('[MapGodQuickbar] ScriptAPI registration skipped', e);
+}
+
+window.MapGodQuickbar = window.MapGodQuickbar || {};
+window.MapGodQuickbar.Main = (function () {
+  const init = async function () {
   const ID = 'mgq_panel';
   const HISTORY_KEY = 'mapgod_sent_history_v1';
   document.getElementById(ID)?.remove();
@@ -303,5 +313,14 @@
     }
   });
 
-  scan();
-})().catch(e => alert('MapGod error: ' + e.message));
+    scan();
+  };
+
+  return {
+    init,
+  };
+})();
+
+(() => {
+  window.MapGodQuickbar.Main.init().catch(e => alert('MapGod error: ' + e.message));
+})();
