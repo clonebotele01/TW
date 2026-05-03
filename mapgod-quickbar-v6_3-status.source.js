@@ -31,6 +31,7 @@ window.MapGodQuickbar.Main = (function () {
       <label><input id="mgq_bonus" type="checkbox" checked> bonus</label>
       <label><input id="mgq_barb" type="checkbox" checked> barb</label>
       <button id="mgq_scan">Scan</button>
+      <button id="mgq_quick_a">Quick A</button>
       <button id="mgq_copy">Copy</button>
       <button id="mgq_probe">Probe</button>
       <button id="mgq_import">Import FA</button>
@@ -189,6 +190,16 @@ window.MapGodQuickbar.Main = (function () {
     return document.querySelector('#mgq_results button[data-mg-a]:not([disabled]), #mgq_results button[data-mg-b]:not([disabled])');
   }
 
+  function firstAButton() {
+    return document.querySelector('#mgq_results button[data-mg-a]:not([disabled])');
+  }
+
+  function quickSendA() {
+    const btn = firstAButton();
+    if (!btn) return status('No available A target. Scan first or check A template.');
+    btn.click();
+  }
+
   function removeRow(targetId) {
     const btn = document.querySelector(`[data-mg-a="${targetId}"], [data-mg-b="${targetId}"]`);
     const tr = btn && btn.closest('tr');
@@ -300,6 +311,7 @@ window.MapGodQuickbar.Main = (function () {
   }
 
   document.getElementById('mgq_scan').onclick = scan;
+  document.getElementById('mgq_quick_a').onclick = quickSendA;
   document.getElementById('mgq_probe').onclick = probeFA;
   document.getElementById('mgq_import').onclick = () => { importFAHistory(); scan(); };
   document.getElementById('mgq_clear').onclick = () => { localStorage.removeItem(HISTORY_KEY); status('Cleared. Scan.'); };
