@@ -18,7 +18,7 @@ window.MapGodQuickbar.Main = (function () {
   panel.style.cssText = 'position:fixed;z-index:2147483647;top:70px;right:20px;width:min(96vw,760px);max-height:82vh;overflow:auto;background:#f4e4bc;color:#2b1a0f;border:2px solid #7d510f;box-shadow:0 8px 30px #0008;font:12px Verdana,Arial;padding:6px';
   panel.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;background:#7d510f;color:white;padding:6px;margin:-10px -10px 10px -10px">
-      <b>MG6.3 status</b><button id="mgq_x">X</button>
+      <b>MG6.3 status QA</b><button id="mgq_x">X</button>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
       <label>Org <input id="mgq_origin" value="${window.game_data?.village?.coord || '481|412'}" style="width:80px"></label>
@@ -200,6 +200,17 @@ window.MapGodQuickbar.Main = (function () {
     btn.click();
   }
 
+  function ensureQuickAButton() {
+    if (document.getElementById('mgq_quick_a')) return;
+    const scanBtn = document.getElementById('mgq_scan');
+    if (!scanBtn) return;
+    const btn = document.createElement('button');
+    btn.id = 'mgq_quick_a';
+    btn.textContent = 'Quick A';
+    btn.onclick = quickSendA;
+    scanBtn.insertAdjacentElement('afterend', btn);
+  }
+
   function removeRow(targetId) {
     const btn = document.querySelector(`[data-mg-a="${targetId}"], [data-mg-b="${targetId}"]`);
     const tr = btn && btn.closest('tr');
@@ -311,6 +322,7 @@ window.MapGodQuickbar.Main = (function () {
   }
 
   document.getElementById('mgq_scan').onclick = scan;
+  ensureQuickAButton();
   document.getElementById('mgq_quick_a').onclick = quickSendA;
   document.getElementById('mgq_probe').onclick = probeFA;
   document.getElementById('mgq_import').onclick = () => { importFAHistory(); scan(); };
