@@ -84,6 +84,11 @@ window.MapGodQuickbar.Main = (function () {
     return c;
   }
 
+  function autoImportFAHistory() {
+    if (!document.querySelector('#plunder_list tr[id^="village_"]')) return 0;
+    return importFAHistory();
+  }
+
   function getUnitCount(unit) {
     const selectors = [
       '#unit_' + unit,
@@ -313,6 +318,7 @@ window.MapGodQuickbar.Main = (function () {
     }
   });
 
+    autoImportFAHistory();
     scan();
   };
 
