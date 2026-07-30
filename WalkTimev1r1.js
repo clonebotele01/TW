@@ -1,0 +1,270 @@
+try {
+  if (window.ScriptAPI && typeof ScriptAPI.register === 'function') {
+    ScriptAPI.register('TWArrivalCalculator', true, 'clonebotele01', 'Coordinate arrival calculator');
+  }
+} catch (e) {
+  console.warn('[TWArrivalCalculator] ScriptAPI registration skipped', e);
+}
+
+window.TWArrivalCalculator = window.TWArrivalCalculator || {};
+window.TWArrivalCalculator.Main = (function () {
+  const init = async function () {
+    const ID = 'twac_panel';
+    const UNIT_SPEEDS_KEY = 'twac_unit_speeds_v1';
+    const SETTINGS_KEY = 'twac_settings_v1';
+
+    await waitForBody();
+    document.getElementById(ID)?.remove();
+
+    const fallbackSpeeds = {
+      spear: 18,
+      sword: 22,
+      axe: 18,
+      archer: 18,
+      spy: 9,
+      light: 10,
+      marcher: 10,
+      heavy: 11,
+      ram: 30,
+      catapult: 30,
+      knight: 10,
+      snob: 35,
+    };
+
+    const unitLabels = {
+      spear: 'Spear',
+      sword: 'Sword',
+      axe: 'Axe',
+      archer: 'Archer',
+      spy: 'Scout',
+      light: 'LC',
+      marcher: 'MA',
+      heavy: 'HC',
+      ram: 'Ram',
+      catapult: 'Cat',
+      knight: 'Pal',
+      snob: 'Noble',
+    };
+
+    const settings = loadSettings();
+    const currentCoord = window.game_data?.village?.coord || '';
+
+    const panel = document.createElement('div');
+    panel.id = ID;
+    panel.style.cssText = 'position:fixed;z-index:2147483647;top:80px;right:24px;width:min(96vw,430px);background:#f4e4bc;color:#2b1a0f;border:2px solid #7d510f;box-shadow:0 8px 30px #0008;font:12px Verdana,Arial;padding:8px';
+    panel.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;background:#7d510f;color:white;padding:6px;margin:-8px -8px 8px -8px">
+        <b>TW Arrival Calculator</b><button id="twac_x">X</button>
+      </div>
+      <div style="display:grid;grid-template-columns:78px 1fr;gap:6px;align-items:center">
+        <label for="twac_from">From</label>
+        <input id="twac_from" value="${escapeAttr(settings.from || currentCoord)}" placeholder="500|500">
+        <label for="twac_to">To</label>
+        <input id="twac_to" value="${escapeAttr(settings.to || '')}" placeholder="505|510">
+        <label for="twac_send">Send time</label>
+        <div style="display:flex;gap:4px">
+          <input id="twac_send" type="datetime-local" step="1" style="flex:1">
+          <button id="twac_now" title="Use current time">Now</button>
+        </div>
+      </div>
+      <div id="twac_units" style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:8px"></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+        <button id="twac_calc">Calculate</button>
+        <button id="twac_copy">Copy result</button>
+        <button id="twac_clear">Clear units</button>
+      </div>
+      <pre id="twac_status" style="background:#fff8e8;border:1px solid #c9a45c;padding:6px;white-space:pre-wrap;margin:8px 0 0 0">Loading unit speeds...</pre>
+    `;
+    document.body.appendChild(panel);
+
+    const status = t => document.getElementById('twac_status').textContent = t;
+    const sendInput = document.getElementById('twac_send');
+    let unitSpeeds = { ...fallbackSpeeds };
+    let lastResult = '';
+
+    document.getElementById('twac_x').onclick = () => panel.remove();
+    document.getElementById('twac_now').onclick = () => {
+      sendInput.value = toDateTimeLocal(new Date());
+      calculate();
+    };
+    document.getElementById('twac_calc').onclick = calculate;
+    document.getElementById('twac_copy').onclick = async () => {
+      if (!lastResult) calculate();
+      try {
+        await navigator.clipboard.writeText(lastResult);
+        status(lastResult + '\n\nCopied.');
+      } catch {
+        prompt('Copy:', lastResult);
+      }
+    };
+    document.getElementById('twac_clear').onclick = () => {
+      document.querySelectorAll('#twac_units input[type="checkbox"]').forEach(el => el.checked = false);
+      calculate();
+    };
+
+    ['twac_from', 'twac_to', 'twac_send'].forEach(id => {
+      const el = document.getElementById(id);
+      el.addEventListener('input', () => {
+        saveSettings();
+        calculate();
+      });
+    });
+
+    if (!sendInput.value) sendInput.value = toDateTimeLocal(new Date());
+
+    renderUnits();
+    calculate();
+
+    try {
+      unitSpeeds = { ...fallbackSpeeds, ...(await loadUnitSpeeds()) };
+    } catch (e) {
+      console.warn('[TWArrivalCalculator] unit speed fetch failed, using fallback speeds', e);
+    }
+    renderUnits();
+    calculate();
+
+    function waitForBody() {
+      if (document.body) return Promise.resolve();
+      return new Promise(resolve => {
+        document.addEventListener('DOMContentLoaded', resolve, { once: true });
+      });
+    }
+
+    function loadSettings() {
+      try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'); } catch { return {}; }
+    }
+
+    function saveSettings() {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+        from: document.getElementById('twac_from')?.value || '',
+        to: document.getElementById('twac_to')?.value || '',
+        units: selectedUnits(),
+      }));
+    }
+
+    async function loadUnitSpeeds() {
+      try {
+        const cached = JSON.parse(localStorage.getItem(UNIT_SPEEDS_KEY) || 'null');
+        if (cached?.t && cached?.speeds && Date.now() - cached.t < 7 * 24 * 60 * 60 * 1000) return cached.speeds;
+      } catch {}
+
+      const xml = await fetch(location.origin + '/interface.php?func=get_unit_info', { credentials: 'same-origin' }).then(r => {
+        if (!r.ok) throw Error('unit info HTTP ' + r.status);
+        return r.text();
+      });
+      const doc = new DOMParser().parseFromString(xml, 'text/xml');
+      const speeds = {};
+      [...doc.querySelectorAll('config > *')].forEach(el => {
+        const speed = parseFloat(el.querySelector('speed')?.textContent || '');
+        if (Number.isFinite(speed)) speeds[el.nodeName] = speed;
+      });
+      if (!Object.keys(speeds).length) throw Error('No unit speeds found');
+      localStorage.setItem(UNIT_SPEEDS_KEY, JSON.stringify({ t: Date.now(), speeds }));
+      return speeds;
+    }
+
+    function renderUnits() {
+      const known = (window.game_data?.units || Object.keys(fallbackSpeeds)).filter(unit => unitSpeeds[unit] != null);
+      const saved = new Set(settings.units || ['light']);
+      document.getElementById('twac_units').innerHTML = known.map(unit => `
+        <label title="${escapeAttr(unitLabels[unit] || unit)}: ${unitSpeeds[unit]} min/field" style="display:flex;gap:3px;align-items:center">
+          <input type="checkbox" value="${escapeAttr(unit)}" ${saved.has(unit) ? 'checked' : ''}>
+          ${escapeHtml(unitLabels[unit] || unit)}
+        </label>
+      `).join('');
+      document.querySelectorAll('#twac_units input[type="checkbox"]').forEach(el => {
+        el.addEventListener('change', () => {
+          saveSettings();
+          calculate();
+        });
+      });
+    }
+
+    function selectedUnits() {
+      return [...document.querySelectorAll('#twac_units input[type="checkbox"]:checked')].map(el => el.value);
+    }
+
+    function coord(value) {
+      const m = String(value || '').match(/(\d{1,3})\s*[|,;:\s]\s*(\d{1,3})/);
+      return m ? { x: +m[1], y: +m[2] } : null;
+    }
+
+    function distance(a, b) {
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    }
+
+    function calculate() {
+      const from = coord(document.getElementById('twac_from').value);
+      const to = coord(document.getElementById('twac_to').value);
+      const units = selectedUnits();
+      saveSettings();
+
+      if (!from) return status('Enter a valid From coordinate, example 500|500.');
+      if (!to) return status('Enter a valid To coordinate, example 505|510.');
+      if (!units.length) return status('Select at least one unit.');
+
+      const sendAt = sendInput.value ? new Date(sendInput.value) : new Date();
+      if (!Number.isFinite(sendAt.getTime())) return status('Enter a valid sending time.');
+
+      const slowestUnit = units.reduce((slowest, unit) => {
+        if (!slowest) return unit;
+        return unitSpeeds[unit] > unitSpeeds[slowest] ? unit : slowest;
+      }, '');
+      const d = distance(from, to);
+      const speedMin = unitSpeeds[slowestUnit];
+      const travelMs = d * speedMin * 60 * 1000;
+      const arriveAt = new Date(sendAt.getTime() + travelMs);
+      const travel = formatDuration(travelMs);
+
+      lastResult = [
+        `${from.x}|${from.y} -> ${to.x}|${to.y}`,
+        `Distance: ${d.toFixed(2)} fields`,
+        `Slowest: ${unitLabels[slowestUnit] || slowestUnit} (${speedMin} min/field)`,
+        `Send: ${formatDateTime(sendAt)}`,
+        `Travel: ${travel}`,
+        `Arrival: ${formatDateTime(arriveAt)}`,
+      ].join('\n');
+      status(lastResult);
+    }
+
+    function toDateTimeLocal(date) {
+      const pad = x => String(x).padStart(2, '0');
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+    }
+
+    function formatDateTime(date) {
+      const pad = x => String(x).padStart(2, '0');
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+    }
+
+    function formatDuration(ms) {
+      let total = Math.round(ms / 1000);
+      const days = Math.floor(total / 86400);
+      total -= days * 86400;
+      const hours = Math.floor(total / 3600);
+      total -= hours * 3600;
+      const minutes = Math.floor(total / 60);
+      const seconds = total - minutes * 60;
+      return `${days ? days + 'd ' : ''}${hours}h ${minutes}m ${seconds}s`;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    }
+
+    function escapeAttr(value) {
+      return escapeHtml(value);
+    }
+  };
+
+  return { init };
+})();
+
+(() => {
+  window.TWArrivalCalculator.Main.init().catch(e => {
+    console.error('[TWArrivalCalculator] startup failed', e);
+    const message = 'TW Arrival Calculator error: ' + (e?.message || e);
+    if (window.UI?.ErrorMessage) UI.ErrorMessage(message);
+    else alert(message);
+  });
+})();
